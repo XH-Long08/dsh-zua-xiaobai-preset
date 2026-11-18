@@ -1,0 +1,13 @@
+{
+  "name": "@local/dsh-zua-xiaobai-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "郑航小白：郑州航空工业管理学院校园智能体（DSH agent preset bundle）",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
