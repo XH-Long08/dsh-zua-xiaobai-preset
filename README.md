@@ -41,6 +41,7 @@ git clone https://github.com/<你的用户名>/dsh-zua-xiaobai-preset.git
 |---|---|
 | `package.json` | bundle 声明，`dsh.bundle.patch` 指向 cordis 补丁 |
 | `cordis.patch.yml` | 预设声明：人设、工具组合、技能目录 |
+| `index.js` / `client.js` | 「郑航面板」：右侧栏校历/入口/课表，登录教务系统导入课表；**只在选择「郑航小白」模式时显示入口** |
 | `skills/zua-campus/` | 郑航校园知识：学校概况、官网链接、校医院、校历、校园方位表 |
 | `skills/github/` | GitHub 公开仓库查阅规则 |
 | `skills/papers/` | 论文检索规则与聚合脚本 |

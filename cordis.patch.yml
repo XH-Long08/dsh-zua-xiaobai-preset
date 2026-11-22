@@ -152,3 +152,5 @@
           - id: tool-plugin-market
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
+    - id: zua-panel
+      name: '@local/dsh-zua-xiaobai-preset'
