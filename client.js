@@ -28,6 +28,13 @@ window.__ModuleLoader__.load({
     const SEM2_END = new Date(2027, 6, 5);
 
     const DAY_NAMES = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    const SLOT_TIMES = [
+      { label: '1-2', start: '08:00', end: '09:40' },
+      { label: '3-4', start: '10:00', end: '11:40' },
+      { label: '5-6', start: '14:30', end: '16:10' },
+      { label: '7-8', start: '16:30', end: '18:10' },
+      { label: '9-10', start: '19:30', end: '21:10' },
+    ];
     const DAY_CHARS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 };
 
     const dayDiff = (a, b) => Math.round((a - b) / 86400000);
@@ -208,6 +215,57 @@ window.__ModuleLoader__.load({
       return Math.max(1, Math.min(5, Math.ceil(first / 2)));
     }
 
+    function slotTime(periods) {
+      const index = slotOf(periods);
+      return index ? SLOT_TIMES[index - 1] : undefined;
+    }
+
+    function timeToMinutes(value) {
+      const [hour, minute] = String(value || '').split(':').map((part) => parseInt(part, 10));
+      return (hour || 0) * 60 + (minute || 0);
+    }
+
+    function UpcomingBar({ rows, week, today, now }) {
+      const list = rows
+        .filter((c) => c.day === today && weekIncluded(c.weeks, week))
+        .map((c) => ({ course: c, info: slotTime(c.periods) }))
+        .filter((item) => item.info)
+        .sort((a, b) => timeToMinutes(a.info.start) - timeToMinutes(b.info.start));
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const ongoing = list.find(
+        (item) => timeToMinutes(item.info.start) <= nowMinutes && nowMinutes <= timeToMinutes(item.info.end),
+      );
+      const next = list.find((item) => timeToMinutes(item.info.start) > nowMinutes);
+      const target = ongoing || next;
+      let text;
+      if (target) {
+        const state = ongoing ? '正在上课' : '即将开始';
+        text = `${state} · 第 ${target.info.label} 节 ${target.info.start}-${target.info.end} · ${target.course.name}${
+          target.course.place ? ' · ' + target.course.place : ''
+        }`;
+      } else {
+        text = list.length ? '今天的课已经结束' : '今天没课';
+      }
+      const accent = ongoing ? '#1a9e6b' : 'var(--dsw-alias-brand-primary, #2f6fed)';
+      return h(
+        'div',
+        {
+          style: {
+            marginTop: '8px',
+            padding: '8px 10px',
+            borderRadius: '8px',
+            borderLeft: `3px solid ${accent}`,
+            background: ongoing ? 'rgba(26,158,107,0.14)' : 'rgba(47,111,237,0.13)',
+            color: 'var(--dsw-alias-label-primary, inherit)',
+            fontSize: '12px',
+            fontWeight: 600,
+            lineHeight: 1.45,
+          },
+        },
+        text,
+      );
+    }
+
     function CourseGrid({ rows, week, today }) {
       const cells = {};
       for (const c of rows) {
@@ -264,8 +322,13 @@ window.__ModuleLoader__.load({
                 { key: label },
                 h(
                   'td',
-                  { style: { ...td, textAlign: 'center', fontSize: '10px', opacity: 0.6, whiteSpace: 'nowrap' } },
-                  label,
+                  { style: { ...td, textAlign: 'center', whiteSpace: 'nowrap' } },
+                  h('div', { style: { fontSize: '10px', fontWeight: 600 } }, label),
+                  h(
+                    'div',
+                    { style: { fontSize: '9px', opacity: 0.55, marginTop: '1px' } },
+                    `${SLOT_TIMES[si].start}-${SLOT_TIMES[si].end}`,
+                  ),
                 ),
                 days.map((d, di) => {
                   const list = cells[si + 1 + '-' + (di + 1)] || [];
@@ -534,6 +597,7 @@ window.__ModuleLoader__.load({
             sheetWeek
               ? h('div', { style: { fontSize: '11px', opacity: 0.6 } }, `课表按第 ${sheetWeek} 周`)
               : null,
+            h(UpcomingBar, { rows: timetable, week: filterWeek, today, now }),
             h(CourseGrid, { rows: timetable, week: filterWeek, today }),
             todays.length
               ? h(
