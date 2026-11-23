@@ -194,13 +194,13 @@ function weeksFromBits(bits) {
   let start = -1;
   for (let i = 0; i < bits.length; i++) {
     if (bits[i] === '1') {
-      if (start < 0) start = i + 1;
+      if (start < 0) start = i;
     } else if (start >= 0) {
-      runs.push([start, i]);
+      runs.push([start, i - 1]);
       start = -1;
     }
   }
-  if (start >= 0) runs.push([start, bits.length]);
+  if (start >= 0) runs.push([start, bits.length - 1]);
   return runs.map(([a, b]) => (a === b ? String(a) : `${a}-${b}`)).join(',');
 }
 
