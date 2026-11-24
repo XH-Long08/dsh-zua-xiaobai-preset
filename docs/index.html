@@ -46,6 +46,23 @@
         </div>
       </section>
 
+      <section id="page-chat" class="page">
+        <div class="card chat-card">
+          <div id="chat-log" class="chat-log"></div>
+          <div class="chat-quick">
+            <button class="link-chip" data-q="这周是第几周？">这周第几周</button>
+            <button class="link-chip" data-q="教务系统在哪登录？">教务系统</button>
+            <button class="link-chip" data-q="校医院在哪，晚上能看病吗？">校医院</button>
+            <button class="link-chip" data-q="从西门到图书馆怎么走？">西门到图书馆</button>
+          </div>
+          <div class="chat-input">
+            <textarea id="chat-text" rows="1" placeholder="问点什么…"></textarea>
+            <button id="chat-send" class="btn">发送</button>
+          </div>
+          <p id="chat-hint" class="muted small">先在「我的」里配置 AI 代理地址和 Key</p>
+        </div>
+      </section>
+
       <section id="page-week" class="page">
         <div class="card">
           <h2 id="week-title"></h2>
@@ -82,6 +99,26 @@
 
       <section id="page-me" class="page">
         <div class="card">
+          <h2>AI 设置</h2>
+          <label class="field">
+            <span>代理地址（OpenAI 兼容）</span>
+            <input id="ai-base" type="url" placeholder="https://your-proxy.example.com/v1" />
+          </label>
+          <label class="field">
+            <span>API Key</span>
+            <input id="ai-key" type="password" placeholder="sk-..." />
+          </label>
+          <label class="field">
+            <span>模型</span>
+            <input id="ai-model" type="text" placeholder="deepseek-chat" />
+          </label>
+          <div class="actions">
+            <button id="btn-save-ai" class="btn">保存设置</button>
+            <button id="btn-clear-ai" class="btn ghost">清除 Key</button>
+          </div>
+          <p id="ai-status" class="muted small"></p>
+        </div>
+        <div class="card">
           <h2>常用入口</h2>
           <div id="links" class="chips"></div>
         </div>
@@ -96,9 +133,10 @@
     </main>
 
     <nav class="bottom-nav">
-      <button class="nav-btn active" data-tab="home">首页</button>
+      <button class="nav-btn" data-tab="home">首页</button>
       <button class="nav-btn" data-tab="week">校历</button>
       <button class="nav-btn" data-tab="timetable">课表</button>
+      <button class="nav-btn" data-tab="chat">问答</button>
       <button class="nav-btn" data-tab="campus">校园</button>
       <button class="nav-btn" data-tab="me">我的</button>
     </nav>

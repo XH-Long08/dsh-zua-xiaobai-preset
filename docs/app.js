@@ -355,13 +355,181 @@ function switchTab(name) {
   }
   if (name === 'week') renderWeek();
   if (name === 'timetable') renderTimetable();
+  if (name === 'chat') renderChat();
   if (name === 'campus') renderCampus();
-  if (name === 'me') renderLinks();
+  if (name === 'me') {
+    renderLinks();
+    renderAISettings();
+  }
+}
+
+const AI_KEY = 'zua-ai-key';
+const AI_BASE = 'zua-ai-base';
+const AI_MODEL = 'zua-ai-model';
+
+const SYSTEM_PROMPT = `你是「郑航小白」，郑州航空工业管理学院（郑航/ZUA）的校园助手。用简体中文、简洁亲切地回答，像耐心的学长学姐。
+
+规则：
+1. 校历以 2026 年 9 月 7 日为第 1 周、每周一进入新一周；当前信息会在每次提问时提供。
+2. 校园事实：龙子湖校区（主校区，郑东新区文苑西路 15 号）；西门在文苑西路、北门在平安大道、东门在龙子湖西路、南门在相济路。图书馆在校园中心，东侧邻沁湖；西苑餐厅在西侧、东苑餐厅在东南、民族餐厅在东苑餐厅西南角；近邻宝在 24-25 号楼南、西篮球场北（京东在内、顺丰再往里）；校医院在行政办公楼 A 楼（南门里侧，急诊 24 小时）。
+3. 不编造：校区、楼名、电话、截止日期、收费金额没有依据就说「这个我不确定，建议查官网/问辅导员」。
+4. 实时信息（通知、校历变动、活动、开放时间）建议查学校官网 zua.edu.cn、教务处 jwc.zua.edu.cn、校医院 xyy.zua.edu.cn。
+5. 回答简短，适合手机阅读；路线给方位+地标，不说步行几分钟。`;
+
+let chatHistory = [];
+
+function loadAI() {
+  return {
+    base: localStorage.getItem(AI_BASE) || '',
+    key: localStorage.getItem(AI_KEY) || '',
+    model: localStorage.getItem(AI_MODEL) || 'deepseek-chat',
+  };
+}
+
+function chatEndpoint(base) {
+  let value = String(base || '').trim().replace(/\/+$/, '');
+  if (!value) return '';
+  if (/\/chat\/completions$/.test(value)) return value;
+  if (/\/v1$/.test(value)) return value + '/chat/completions';
+  return value + '/v1/chat/completions';
+}
+
+function currentContext() {
+  const info = weekInfo(new Date());
+  const now = new Date();
+  const today = now.getDay() === 0 ? 7 : now.getDay();
+  return `当前时间：${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${DAY_NAMES[today]}，校历第 ${info.week} 周（${info.semester}）。`;
+}
+
+function appendChat(role, text) {
+  const log = $('#chat-log');
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-msg ' + role;
+  bubble.textContent = text;
+  log.appendChild(bubble);
+  log.scrollTop = log.scrollHeight;
+  return bubble;
+}
+
+async function sendChat() {
+  const input = $('#chat-text');
+  const text = input.value.trim();
+  if (!text) return;
+  const ai = loadAI();
+  if (!ai.base || !ai.key) {
+    $('#chat-hint').textContent = '先在「我的」里配置代理地址和 Key';
+    return;
+  }
+  input.value = '';
+  appendChat('user', text);
+  chatHistory.push({ role: 'user', content: text });
+  if (chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
+
+  const bubble = appendChat('assistant', '…');
+  let answer = '';
+  try {
+    const response = await fetch(chatEndpoint(ai.base), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${ai.key}`,
+      },
+      body: JSON.stringify({
+        model: ai.model,
+        stream: true,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT + '\n' + currentContext() },
+          ...chatHistory,
+        ],
+      }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${(await response.text()).slice(0, 120)}`);
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('text/event-stream') && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const json = JSON.parse(payload);
+            const delta = json.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              answer += delta;
+              bubble.textContent = answer;
+              $('#chat-log').scrollTop = $('#chat-log').scrollHeight;
+            }
+          } catch {}
+        }
+      }
+    } else {
+      const json = await response.json();
+      answer = json.choices?.[0]?.message?.content || '';
+      bubble.textContent = answer || '（空回复）';
+    }
+    if (!answer) bubble.textContent = '（空回复）';
+    chatHistory.push({ role: 'assistant', content: answer || '' });
+  } catch (error) {
+    bubble.textContent = `请求失败：${error.message || error}`;
+    bubble.classList.add('error');
+  }
+}
+
+function renderAISettings() {
+  const ai = loadAI();
+  $('#ai-base').value = ai.base;
+  $('#ai-key').value = ai.key;
+  $('#ai-model').value = ai.model;
+  $('#ai-status').textContent = ai.base && ai.key ? `已配置：${chatEndpoint(ai.base)}` : '未配置 AI，问答不可用';
+  $('#chat-hint').textContent =
+    ai.base && ai.key ? '已连接 AI，直接提问即可' : '先在「我的」里配置 AI 代理地址和 Key';
+}
+
+function renderChat() {
+  const log = $('#chat-log');
+  if (log.childElementCount === 0) {
+    appendChat('assistant', '你好，我是郑航小白。可以问我校历第几周、教务系统、校医院、校园路线，或者让我帮你拆学习计划。');
+  }
 }
 
 function initEvents() {
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  $('#chat-send').addEventListener('click', sendChat);
+  $('#chat-text').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendChat();
+    }
+  });
+  document.querySelectorAll('[data-q]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $('#chat-text').value = btn.dataset.q;
+      sendChat();
+    });
+  });
+  $('#btn-save-ai').addEventListener('click', () => {
+    localStorage.setItem(AI_BASE, $('#ai-base').value.trim());
+    localStorage.setItem(AI_KEY, $('#ai-key').value.trim());
+    localStorage.setItem(AI_MODEL, $('#ai-model').value.trim() || 'deepseek-chat');
+    renderAISettings();
+  });
+  $('#btn-clear-ai').addEventListener('click', () => {
+    localStorage.removeItem(AI_KEY);
+    localStorage.removeItem(AI_BASE);
+    renderAISettings();
   });
 
   $('#btn-import').addEventListener('click', () => {
