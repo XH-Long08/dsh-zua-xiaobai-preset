@@ -511,7 +511,8 @@ async function sendChat() {
 
 function renderAISettings() {
   const ai = loadAI();
-  $('#ai-base').value = ai.base;
+  $('#ai-base').value = ai.base || 'https://api.deepseek.com/v1';
+  $('#ai-key').value = ai.key;
   $('#ai-key').value = ai.key;
   $('#ai-model').value = ai.model;
   $('#ai-status').textContent = ai.base && ai.key ? `已配置：${chatEndpoint(ai.base)}` : '未配置 AI，问答不可用';
