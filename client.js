@@ -710,6 +710,18 @@ window.__ModuleLoader__.load({
                 },
                 '从剪贴板粘贴',
               ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  style: btnStyle,
+                  onClick: () => {
+                    const ok = copyText(JSON.stringify(timetable));
+                    setMsg(ok ? `已复制 ${timetable.length} 条课表 JSON，可粘贴到手机版` : '复制失败');
+                  },
+                },
+                '复制课表 JSON',
+              ),
               h('button', { type: 'button', style: btnStyle, onClick: clear }, '清空'),
             ),
             h('div', { style: { fontSize: '11px', opacity: 0.55 } }, '课表只存在本机浏览器。'),

@@ -258,6 +258,30 @@ function renderWeek() {
   }
 }
 
+function normalizeRows(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((row) => ({
+      day: Number(row.day) || 0,
+      periods: String(row.periods || '').trim(),
+      name: String(row.name || '').trim(),
+      place: String(row.place || '').trim(),
+      weeks: String(row.weeks || '').trim(),
+    }))
+    .filter((row) => row.day >= 1 && row.day <= 7 && row.periods);
+}
+
+function parseImportText(text) {
+  const raw = String(text || '').trim();
+  if (raw.startsWith('[') || raw.startsWith('{')) {
+    try {
+      const data = JSON.parse(raw);
+      const rows = normalizeRows(Array.isArray(data) ? data : data.courses);
+      if (rows.length) return rows;
+    } catch {}
+  }
+  return parseTimetable(raw);
+}
+
 function renderTimetable() {
   const now = new Date();
   const info = weekInfo(now);
@@ -526,6 +550,32 @@ function initEvents() {
     localStorage.setItem(AI_MODEL, $('#ai-model').value.trim() || 'deepseek-chat');
     renderAISettings();
   });
+  $('#btn-test-ai').addEventListener('click', async () => {
+    const ai = loadAI();
+    const status = $('#ai-status');
+    if (!ai.base || !ai.key) {
+      status.textContent = '先填写代理地址和 Key';
+      return;
+    }
+    status.textContent = '测试中…';
+    try {
+      const response = await fetch(chatEndpoint(ai.base), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${ai.key}` },
+        body: JSON.stringify({
+          model: ai.model,
+          stream: false,
+          max_tokens: 8,
+          messages: [{ role: 'user', content: '回复 OK' }],
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${(await response.text()).slice(0, 100)}`);
+      const json = await response.json();
+      status.textContent = `连接成功：${json.choices?.[0]?.message?.content?.slice(0, 20) || 'OK'}`;
+    } catch (error) {
+      status.textContent = `连接失败：${error.message || error}`;
+    }
+  });
   $('#btn-clear-ai').addEventListener('click', () => {
     localStorage.removeItem(AI_KEY);
     localStorage.removeItem(AI_BASE);
@@ -536,14 +586,15 @@ function initEvents() {
     $('#import-panel').classList.toggle('hidden');
   });
   $('#btn-save-import').addEventListener('click', () => {
-    const rows = parseTimetable($('#import-text').value);
+    const rows = parseImportText($('#import-text').value);
     if (!rows.length) {
-      alert('没解析出条目，格式示例：周一 1-2 高等数学 3号教学楼101（1-16周）');
+      alert('没解析出条目。可以粘贴行文本（周一 1-2 高数 3号教学楼101 1-16周），或从电脑面板复制的 JSON。');
       return;
     }
     saveTimetable(rows);
     $('#import-panel').classList.add('hidden');
     renderTimetable();
+    renderHome();
     alert(`已导入 ${rows.length} 条课程`);
   });
   $('#btn-clear').addEventListener('click', () => {
