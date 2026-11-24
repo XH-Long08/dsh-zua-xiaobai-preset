@@ -1,4 +1,4 @@
-const SLOTS = [
+﻿const SLOTS = [
   { label: '1-2', start: '08:00', end: '09:40' },
   { label: '3-4', start: '10:00', end: '11:40' },
   { label: '5-6', start: '14:30', end: '16:10' },
@@ -441,7 +441,7 @@ async function sendChat() {
   if (!text) return;
   const ai = loadAI();
   if (!ai.base || !ai.key) {
-    $('#chat-hint').textContent = '先在「我的」里配置代理地址和 Key';
+    $('#chat-hint').textContent = '先在「我的」里配置 API Key';
     return;
   }
   input.value = '';
@@ -517,7 +517,7 @@ function renderAISettings() {
   $('#ai-model').value = ai.model;
   $('#ai-status').textContent = ai.base && ai.key ? `已配置：${chatEndpoint(ai.base)}` : '未配置 AI，问答不可用';
   $('#chat-hint').textContent =
-    ai.base && ai.key ? '已连接 AI，直接提问即可' : '先在「我的」里配置 AI 代理地址和 Key';
+    ai.base && ai.key ? '已连接 AI，直接提问即可' : '先在「我的」里配置 API Key';
 }
 
 function renderChat() {
@@ -555,7 +555,7 @@ function initEvents() {
     const ai = loadAI();
     const status = $('#ai-status');
     if (!ai.base || !ai.key) {
-      status.textContent = '先填写代理地址和 Key';
+      status.textContent = '先填写 API 地址和 Key';
       return;
     }
     status.textContent = '测试中…';
