@@ -399,6 +399,252 @@ window.__ModuleLoader__.load({
       );
     }
 
+    const BILL_KEY = 'zua-bills-v1';
+    const BILL_CATEGORIES = ['餐饮', '交通', '购物', '学习', '娱乐', '医疗', '住宿', '通讯', '其他'];
+    const CATEGORY_RULES = [
+      ['餐饮', /饭|餐|食堂|外卖|美团|饿了么|奶茶|咖啡|肯德基|麦当劳|瑞幸|蜜雪|烧烤|火锅|面|粉|小吃/],
+      ['交通', /地铁|公交|打车|滴滴|出租|火车|高铁|机票|加油|停车|车费|共享单车/],
+      ['购物', /淘宝|京东|拼多多|超市|丹尼斯|商场|天猫|唯品会|便利店|衣服|鞋|日用品/],
+      ['学习', /书|打印|文具|课程|考试|学费|教材|知网|论文|培训/],
+      ['娱乐', /电影|游戏|健身|KTV|演出|会员|视频|腾讯|爱奇艺|B站|网易云/],
+      ['医疗', /医院|药|诊所|挂号|体检|牙科/],
+      ['住宿', /房租|宿舍|水电|物业|宾馆|酒店/],
+      ['通讯', /话费|流量|宽带|手机费/],
+    ];
+
+    function guessCategory(desc) {
+      const text = String(desc || '');
+      for (const [category, pattern] of CATEGORY_RULES) if (pattern.test(text)) return category;
+      return '其他';
+    }
+
+    function loadBills() {
+      try {
+        const raw = localStorage.getItem(BILL_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveBills(list) {
+      try {
+        localStorage.setItem(BILL_KEY, JSON.stringify(list));
+      } catch {}
+    }
+
+    function todayISO() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function normalizeDate(value) {
+      const text = String(value || '').trim().replace(/[/.年]/g, '-').replace(/月/g, '-').replace(/日/g, '');
+      const match = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+      const short = text.match(/^(\d{1,2})-(\d{1,2})$/);
+      if (short) return `${new Date().getFullYear()}-${short[1].padStart(2, '0')}-${short[2].padStart(2, '0')}`;
+      return '';
+    }
+
+    function parseAmount(value) {
+      const num = parseFloat(String(value || '').replace(/[^\d.-]/g, ''));
+      return Number.isFinite(num) ? Math.abs(num) : NaN;
+    }
+
+    function monthOf(date) {
+      return String(date || '').slice(0, 7);
+    }
+
+    function currentMonth() {
+      return todayISO().slice(0, 7);
+    }
+
+    function BillsPanel() {
+      const [bills, setBills] = React.useState(loadBills);
+      const [month, setMonth] = React.useState(currentMonth);
+      const [date, setDate] = React.useState(todayISO);
+      const [amount, setAmount] = React.useState('');
+      const [desc, setDesc] = React.useState('');
+      const [category, setCategory] = React.useState('auto');
+      const [msg, setMsg] = React.useState('');
+      const [csv, setCsv] = React.useState('');
+
+      const update = (list) => {
+        setBills(list);
+        saveBills(list);
+      };
+      const add = () => {
+        const value = parseAmount(amount);
+        const day = normalizeDate(date);
+        if (!value || !day) {
+          setMsg('填写日期和金额');
+          return;
+        }
+        const row = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          date: day,
+          amount: Math.round(value * 100) / 100,
+          desc: desc.trim() || '未备注',
+          category: category === 'auto' ? guessCategory(desc) : category,
+        };
+        update([row, ...bills]);
+        setAmount('');
+        setDesc('');
+        setMsg('已记录');
+      };
+
+      const remove = (id) => {
+        update(bills.filter((b) => b.id !== id));
+      };
+
+      const importCsv = () => {
+        const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (!lines.length) {
+          setMsg('粘贴 CSV 内容');
+          return;
+        }
+        let start = 0;
+        let index = { date: 0, amount: 1, desc: 2 };
+        if (/日期|时间|金额|说明|商户/.test(lines[0])) {
+          const header = lines[0].split(',').map((h) => h.trim());
+          const find = (names) => header.findIndex((h) => names.some((n) => h.includes(n)));
+          index = {
+            date: find(['日期', '时间']),
+            amount: find(['金额', '支出']),
+            desc: find(['说明', '商户', '商品', '备注']),
+          };
+          start = 1;
+        }
+        const added = [];
+        for (let i = start; i < lines.length; i++) {
+          const cols = lines[i].split(',');
+          const day = normalizeDate(cols[index.date]);
+          const value = parseAmount(cols[index.amount]);
+          const text = (cols[index.desc] || '未备注').replace(/"/g, '').trim();
+          if (!day || !value) continue;
+          added.push({
+            id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+            date: day,
+            amount: Math.round(value * 100) / 100,
+            desc: text || '未备注',
+            category: guessCategory(text),
+          });
+        }
+        if (!added.length) {
+          setMsg('没识别到记录，格式示例：2026-11-01,25.5,午饭');
+          return;
+        }
+        update([...added, ...bills]);
+        setCsv('');
+        setMsg(`导入 ${added.length} 条`);
+      };
+
+      const exportCsv = () => {
+        const rows = [['日期', '金额', '说明', '分类']];
+        for (const b of bills) rows.push([b.date, b.amount.toFixed(2), b.desc, b.category]);
+        const text = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        try {
+          const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'zua-bills.csv';
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch {}
+      };
+
+      const monthBills = bills.filter((b) => monthOf(b.date) === month);
+      const total = monthBills.reduce((sum, b) => sum + b.amount, 0);
+      const byCategory = {};
+      for (const b of monthBills) byCategory[b.category] = (byCategory[b.category] || 0) + b.amount;
+      const ranked = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+
+      return h(
+        'div',
+        { style: { height: '100%', overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px', color: 'var(--dsw-alias-label-primary, inherit)' } },
+        h('div', { style: { fontSize: '15px', fontWeight: 700 } }, '郑航账单'),
+        h(
+          'div',
+          { style: { ...card, display: 'flex', flexDirection: 'column', gap: '8px' } },
+          h('div', { style: sectionTitle }, '本月统计'),
+          h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+            h('input', { type: 'month', value: month, onChange: (e) => setMonth(e.target.value), style: inputStyle }),
+            h('span', { style: { fontSize: '20px', fontWeight: 800 } }, `¥${total.toFixed(2)}`),
+            h('span', { style: { fontSize: '11px', opacity: 0.6 } }, `${monthBills.length} 笔`),
+          ),
+          ranked.length
+            ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' } },
+                ranked.map(([name, value]) =>
+                  h('div', { key: name, style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                    h('span', { style: { width: '38px', fontSize: '11px' } }, name),
+                    h('div', { style: { flex: 1, height: '6px', borderRadius: '3px', background: 'rgba(127,127,127,0.15)', overflow: 'hidden' } },
+                      h('div', { style: { width: `${total ? (value / total) * 100 : 0}%`, height: '100%', background: 'var(--dsw-alias-brand-primary, #2f6fed)' } }),
+                    ),
+                    h('span', { style: { width: '60px', textAlign: 'right', fontSize: '11px', opacity: 0.8 } }, `¥${value.toFixed(2)}`),
+                  ),
+                ),
+              )
+            : h('div', { style: { fontSize: '11px', opacity: 0.6 } }, '本月还没有记录'),
+        ),
+        h(
+          'div',
+          { style: { ...card, display: 'flex', flexDirection: 'column', gap: '8px' } },
+          h('div', { style: sectionTitle }, '记一笔'),
+          h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+            h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value), style: { ...inputStyle, flex: '1 1 110px' } }),
+            h('input', { inputMode: 'decimal', value: amount, onChange: (e) => setAmount(e.target.value), placeholder: '金额', style: { ...inputStyle, flex: '1 1 80px' } }),
+            h('select', { value: category, onChange: (e) => setCategory(e.target.value), style: inputStyle },
+              h('option', { value: 'auto' }, '自动分类'),
+              BILL_CATEGORIES.map((c) => h('option', { key: c, value: c }, c)),
+            ),
+          ),
+          h('input', { value: desc, onChange: (e) => setDesc(e.target.value), placeholder: '说明，如「食堂午饭」', style: inputStyle }),
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            h('button', { type: 'button', style: btnStyle, onClick: add }, '添加'),
+            h('button', { type: 'button', style: btnStyle, onClick: exportCsv }, '导出 CSV'),
+            h('button', { type: 'button', style: btnStyle, onClick: () => { update([]); setMsg('已清空'); } }, '清空全部'),
+          ),
+          msg ? h('div', { style: { fontSize: '11px', opacity: 0.7 } }, msg) : null,
+        ),
+        h(
+          'div',
+          { style: { ...card, display: 'flex', flexDirection: 'column', gap: '8px' } },
+          h('div', { style: sectionTitle }, '导入 CSV（支付宝/微信账单）'),
+          h('textarea', { value: csv, onChange: (e) => setCsv(e.target.value), rows: 3, placeholder: '日期,金额,说明\n2026-11-01,25.5,食堂午饭', style: inputStyle }),
+          h('button', { type: 'button', style: btnStyle, onClick: importCsv }, '导入'),
+        ),
+        h(
+          'div',
+          { style: { ...card, display: 'flex', flexDirection: 'column', gap: '6px' } },
+          h('div', { style: sectionTitle }, `记录（${monthBills.length} 笔）`),
+          monthBills.length
+            ? monthBills.slice(0, 80).map((b) =>
+                h('div', { key: b.id, style: { display: 'flex', alignItems: 'center', gap: '8px', borderTop: '.5px solid rgba(127,127,127,0.15)', paddingTop: '5px' } },
+                  h('span', { style: { fontSize: '11px', opacity: 0.6, width: '56px' } }, b.date.slice(5)),
+                  h('span', { style: { fontSize: '11px', width: '44px' } }, b.category),
+                  h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, b.desc),
+                  h('span', { style: { fontSize: '12px', fontWeight: 600 } }, `¥${b.amount.toFixed(2)}`),
+                  h('button', { type: 'button', style: { ...btnStyle, padding: '2px 6px', fontSize: '10px' }, onClick: () => remove(b.id) }, '删'),
+                ),
+              )
+            : h('div', { style: { fontSize: '11px', opacity: 0.6 } }, '还没有记录'),
+        ),
+      );
+    }
+
+    const inputStyle = {
+      padding: '6px 8px',
+      fontSize: '12px',
+      fontFamily: 'inherit',
+      color: 'inherit',
+      background: 'transparent',
+      border: '.5px solid var(--dsw-alias-border-l3, rgba(127,127,127,0.3))',
+      borderRadius: '8px',
+      boxSizing: 'border-box',
+    };
+
     function Panel() {
       const now = new Date();
       const info = weekInfo(now);
@@ -533,7 +779,24 @@ window.__ModuleLoader__.load({
         h(
           'div',
           null,
-          h('div', { style: { fontSize: '15px', fontWeight: 700, marginBottom: '6px' } }, '郑航面板'),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' } },
+            h('div', { style: { fontSize: '15px', fontWeight: 700 } }, '郑航面板'),
+            h(
+              'button',
+              {
+                type: 'button',
+                style: { ...btnStyle, padding: '2px 8px', fontSize: '11px' },
+                onClick: () => {
+                  try {
+                    window.__zuaOpenBills && window.__zuaOpenBills();
+                  } catch {}
+                },
+              },
+              '账单',
+            ),
+          ),
           h(
             'div',
             { style: card },
@@ -750,10 +1013,32 @@ window.__ModuleLoader__.load({
           'zua-panel: tab body',
         );
 
+        ctx.effect(
+          () =>
+            ctx.sidebarRightTabs.register({
+              id: '@local/zua-panel-bills',
+              kind: 'zua-bills',
+              priority: 'extension',
+              title: () => '郑航账单',
+              keepMounted: true,
+            }),
+          'zua-panel: bills tab type',
+        );
+
+        ctx.effect(
+          () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: '@local/zua-panel-bills' }, BillsPanel),
+          'zua-panel: bills tab body',
+        );
+
         ctx.effect(() => {
           window.__zuaPanelOpen = () => {
             try {
               ctx.sidebarRight.openTab(KIND);
+            } catch {}
+          };
+          window.__zuaOpenBills = () => {
+            try {
+              ctx.sidebarRight.openTab('zua-bills');
             } catch {}
           };
           window.__zuaOpenInBrowser = (url) => {
@@ -766,6 +1051,7 @@ window.__ModuleLoader__.load({
           };
           return () => {
             delete window.__zuaPanelOpen;
+            delete window.__zuaOpenBills;
             delete window.__zuaOpenInBrowser;
           };
         }, 'zua-panel: open hooks');
