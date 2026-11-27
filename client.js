@@ -469,7 +469,9 @@ window.__ModuleLoader__.load({
       const [desc, setDesc] = React.useState('');
       const [category, setCategory] = React.useState('auto');
       const [msg, setMsg] = React.useState('');
-      const [csv, setCsv] = React.useState('');
+      const [shot, setShot] = React.useState('');
+      const [busy, setBusy] = React.useState(false);
+      const fileRef = React.useRef(null);
 
       const update = (list) => {
         setBills(list);
@@ -506,46 +508,49 @@ window.__ModuleLoader__.load({
         update(bills.filter((b) => b.id !== id));
       };
 
-      const importCsv = () => {
-        const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        if (!lines.length) {
-          setMsg('粘贴 CSV 内容');
-          return;
-        }
-        let start = 0;
-        let index = { date: 0, amount: 1, desc: 2 };
-        if (/日期|时间|金额|说明|商户/.test(lines[0])) {
-          const header = lines[0].split(',').map((h) => h.trim());
-          const find = (names) => header.findIndex((h) => names.some((n) => h.includes(n)));
-          index = {
-            date: find(['日期', '时间']),
-            amount: find(['金额', '支出']),
-            desc: find(['说明', '商户', '商品', '备注']),
-          };
-          start = 1;
-        }
-        const added = [];
-        for (let i = start; i < lines.length; i++) {
-          const cols = lines[i].split(',');
-          const day = normalizeDate(cols[index.date]);
-          const value = parseAmount(cols[index.amount]);
-          const text = (cols[index.desc] || '未备注').replace(/"/g, '').trim();
-          if (!day || !value) continue;
-          added.push({
-            id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-            date: day,
-            amount: Math.round(value * 100) / 100,
-            desc: text || '未备注',
-            category: guessCategory(text),
+      const parseBillImage = async (file) => {
+        setBusy(true);
+        setMsg('正在识别账单截图…');
+        try {
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('read failed'));
+            reader.readAsDataURL(file);
           });
+          const small = await downscale(dataUrl, 1600);
+          setShot(small);
+          const response = await fetch('http://127.0.0.1:27127/zua-panel/bills/parse', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ dataUrl: small }),
+            signal: AbortSignal.timeout(180000),
+          });
+          const raw = await response.text();
+          let payload = {};
+          try {
+            payload = JSON.parse(raw);
+          } catch {}
+          if (!response.ok) throw new Error(payload.error || raw.slice(0, 120) || `HTTP ${response.status}`);
+          const list = Array.isArray(payload.transactions) ? payload.transactions : [];
+          if (!list.length) throw new Error(payload.error || '没识别到支出记录');
+          const added = list
+            .map((item, i) => ({
+              id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+              date: normalizeDate(item.date) || todayISO(),
+              amount: Math.abs(Number(item.amount) || 0),
+              desc: item.desc || '未备注',
+              category: BILL_CATEGORIES.includes(item.category) ? item.category : guessCategory(item.desc),
+            }))
+            .filter((item) => item.amount > 0);
+          if (!added.length) throw new Error('识别结果没有有效金额');
+          update([...added, ...bills]);
+          setMsg(`已导入 ${added.length} 笔`);
+        } catch (error) {
+          setMsg(`识别失败：${error && error.message ? error.message : error}`);
+        } finally {
+          setBusy(false);
         }
-        if (!added.length) {
-          setMsg('没识别到记录，格式示例：2026-11-01,25.5,午饭');
-          return;
-        }
-        update([...added, ...bills]);
-        setCsv('');
-        setMsg(`导入 ${added.length} 条`);
       };
 
       const exportCsv = () => {
@@ -636,9 +641,44 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { style: { ...card, display: 'flex', flexDirection: 'column', gap: '8px' } },
-          h('div', { style: sectionTitle }, '导入 CSV（支付宝/微信账单）'),
-          h('textarea', { value: csv, onChange: (e) => setCsv(e.target.value), rows: 3, placeholder: '日期,金额,说明\n2026-11-01,25.5,食堂午饭', style: inputStyle }),
-          h('button', { type: 'button', style: btnStyle, onClick: importCsv }, '导入'),
+          h('div', { style: sectionTitle }, '截图导入账单'),
+          h('input', {
+            ref: fileRef,
+            type: 'file',
+            accept: 'image/*',
+            style: { display: 'none' },
+            onChange: (event) => {
+              const file = event.target.files && event.target.files[0];
+              if (file) parseBillImage(file);
+              event.target.value = '';
+            },
+          }),
+          h(
+            'div',
+            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+            h(
+              'button',
+              {
+                type: 'button',
+                style: btnStyle,
+                disabled: busy,
+                onClick: () => fileRef.current && fileRef.current.click(),
+              },
+              busy ? '识别中…' : '选择账单截图',
+            ),
+            shot
+              ? h('img', {
+                  src: shot,
+                  alt: '账单截图',
+                  style: { maxHeight: '120px', borderRadius: '8px', border: '.5px solid rgba(127,127,127,0.25)' },
+                })
+              : null,
+          ),
+          h(
+            'div',
+            { style: { fontSize: '11px', opacity: 0.6 } },
+            '支持支付宝/微信/银行/校园卡支付记录截图，只识别支出；识别后按商户自动分类。',
+          ),
         ),
         h(
           'div',
