@@ -412,8 +412,9 @@ async function handleBillsParse(ctx, req, res) {
   if (!picked) return send(res, 400, { error: 'no vision model available' });
 
   const llm = ctx.get('llm');
-  let output = '';
-  try {
+  const runVision = async (promptText, maxTokens) => {
+    let output = '';
+    let finish = '';
     for await (const chunk of llm.stream({
       provider: picked.provider,
       model: picked.model,
@@ -422,27 +423,48 @@ async function handleBillsParse(ctx, req, res) {
         {
           role: 'user',
           content: [
-            { type: 'text', text: BILL_PROMPT },
+            { type: 'text', text: promptText },
             { type: 'image', attachment: ref },
           ],
         },
       ],
-      maxTokens: 12000,
+      maxTokens,
       temperature: 0,
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(180000),
     })) {
       if (chunk.type === 'text-delta') output += chunk.text;
-      else if (chunk.type === 'finish' && chunk.reason?.kind === 'error') {
-        throw new Error(chunk.reason.failure?.message || 'model error');
+      else if (chunk.type === 'finish') {
+        finish = chunk.reason?.kind || '';
+        if (chunk.reason?.kind === 'error') {
+          throw new Error(chunk.reason.failure?.message || 'model error');
+        }
       }
+    }
+    return { output, finish };
+  };
+
+  let run;
+  try {
+    run = await runVision(BILL_PROMPT, 12000);
+    if (!/\[[\s\S]*\]/.test(run.output)) {
+      run = await runVision(BILL_PROMPT + '\n最多提取 20 条记录，只输出 JSON 数组。', 20000);
     }
   } catch (error) {
     return send(res, 502, { error: String(error?.message || error), model: picked });
   }
+  try {
+    await writeFile('C:/Users/13102/Desktop/白龍/dsh/.zua-panel-bills-llm.txt', run.output, 'utf8');
+  } catch {}
 
-  let text = output.replace(/```(?:json)?/gi, '').trim();
+  const text = run.output.replace(/```(?:json)?/gi, '').trim();
   const arrayMatch = text.match(/\[[\s\S]*\]/);
-  if (!arrayMatch) return send(res, 200, { ok: true, transactions: [], error: '模型没有返回 JSON 数组', raw: text.slice(0, 300) });
+  if (!arrayMatch) {
+    return send(res, 200, {
+      ok: true,
+      transactions: [],
+      error: `模型没有返回 JSON 数组（finish=${run.finish || 'none'}）：${text.slice(0, 120) || '空输出'}`,
+    });
+  }
   let list;
   try {
     list = JSON.parse(arrayMatch[0]);
