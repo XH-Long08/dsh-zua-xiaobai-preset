@@ -604,6 +604,19 @@ window.__ModuleLoader__.load({
           h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
             h('button', { type: 'button', style: btnStyle, onClick: add }, '添加'),
             h('button', { type: 'button', style: btnStyle, onClick: exportCsv }, '导出 CSV'),
+            h(
+              'button',
+              {
+                type: 'button',
+                style: btnStyle,
+                onClick: () => {
+                  localStorage.removeItem(WALLET_HIDDEN);
+                  window.dispatchEvent(new Event('zua-wallet-sync'));
+                  setMsg('已显示钱包挂件');
+                },
+              },
+              '显示钱包挂件',
+            ),
             h('button', { type: 'button', style: btnStyle, onClick: () => { update([]); setMsg('已清空'); } }, '清空全部'),
           ),
           msg ? h('div', { style: { fontSize: '11px', opacity: 0.7 } }, msg) : null,
@@ -630,6 +643,182 @@ window.__ModuleLoader__.load({
                 ),
               )
             : h('div', { style: { fontSize: '11px', opacity: 0.6 } }, '还没有记录'),
+        ),
+      );
+    }
+
+    const WALLET_HIDDEN = 'zua-wallet-hidden';
+
+    function WalletWidget() {
+      const [hidden, setHidden] = React.useState(() => localStorage.getItem(WALLET_HIDDEN) === '1');
+      const [expanded, setExpanded] = React.useState(false);
+      const [bills, setBills] = React.useState(loadBills);
+      const [amount, setAmount] = React.useState('');
+      const [desc, setDesc] = React.useState('');
+      const [month, setMonth] = React.useState(currentMonth);
+      const [msg, setMsg] = React.useState('');
+
+      React.useEffect(() => {
+        const sync = () => {
+          setBills(loadBills());
+          setHidden(localStorage.getItem(WALLET_HIDDEN) === '1');
+        };
+        window.addEventListener('zua-wallet-sync', sync);
+        return () => window.removeEventListener('zua-wallet-sync', sync);
+      }, []);
+
+      if (hidden) return null;
+
+      const monthBills = bills.filter((b) => monthOf(b.date) === month);
+      const total = monthBills.reduce((sum, b) => sum + b.amount, 0);
+      const byCategory = {};
+      for (const b of monthBills) byCategory[b.category] = (byCategory[b.category] || 0) + b.amount;
+      const ranked = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+      const add = () => {
+        const value = parseAmount(amount);
+        if (!value) {
+          setMsg('填金额');
+          return;
+        }
+        const row = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          date: todayISO(),
+          amount: Math.round(value * 100) / 100,
+          desc: desc.trim() || '未备注',
+          category: guessCategory(desc),
+        };
+        const next = [row, ...loadBills()];
+        saveBills(next);
+        setBills(next);
+        setAmount('');
+        setDesc('');
+        setMsg('已记');
+        window.dispatchEvent(new Event('zua-wallet-sync'));
+      };
+
+      const hide = () => {
+        localStorage.setItem(WALLET_HIDDEN, '1');
+        setHidden(true);
+        window.dispatchEvent(new Event('zua-wallet-sync'));
+      };
+
+      const shellStyle = {
+        background: 'var(--dsw-alias-bg-layer-1, #ffffff)',
+        border: '.5px solid var(--dsw-alias-border-l3, rgba(127,127,127,0.25))',
+        borderRadius: '14px',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+        backdropFilter: 'blur(10px)',
+        color: 'var(--dsw-alias-label-primary, #1c2333)',
+      };
+
+      if (!expanded) {
+        return h(
+          'div',
+          { style: { position: 'fixed', right: '18px', bottom: '104px', zIndex: 60 } },
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () => setExpanded(true),
+              style: {
+                ...shellStyle,
+                padding: '8px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              },
+            },
+            h('span', { style: { fontSize: '14px' } }, '钱包'),
+            h('span', { style: { color: 'var(--dsw-alias-brand-primary, #2f6fed)' } }, `本月 ¥${total.toFixed(2)}`),
+            h('span', { style: { fontSize: '10px', opacity: 0.5 } }, '▸'),
+          ),
+        );
+      }
+
+      return h(
+        'div',
+        { style: { position: 'fixed', right: '18px', bottom: '104px', zIndex: 60, width: '248px' } },
+        h(
+          'div',
+          { style: { ...shellStyle, padding: '12px', display: 'flex', flexDirection: 'column', gap: '9px' } },
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+            h('div', { style: { fontSize: '13px', fontWeight: 700 } }, '钱包'),
+            h(
+              'div',
+              { style: { display: 'flex', gap: '6px' } },
+              h('button', { type: 'button', onClick: () => setExpanded(false), style: { ...btnStyle, padding: '2px 7px', fontSize: '11px' } }, '收起'),
+              h('button', { type: 'button', onClick: hide, style: { ...btnStyle, padding: '2px 7px', fontSize: '11px' } }, '隐藏'),
+            ),
+          ),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'baseline', gap: '6px' } },
+            h('div', { style: { fontSize: '22px', fontWeight: 800 } }, `¥${total.toFixed(2)}`),
+            h('div', { style: { fontSize: '11px', opacity: 0.6 } }, `${monthBills.length} 笔 · ${month}`),
+          ),
+          ranked.length
+            ? h(
+                'div',
+                { style: { display: 'flex', flexDirection: 'column', gap: '5px' } },
+                ranked.map(([name, value]) =>
+                  h(
+                    'div',
+                    { key: name, style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+                    h('span', { style: { width: '34px', fontSize: '10px' } }, name),
+                    h(
+                      'div',
+                      { style: { flex: 1, height: '5px', borderRadius: '3px', background: 'rgba(127,127,127,0.16)', overflow: 'hidden' } },
+                      h('div', {
+                        style: {
+                          width: `${total ? (value / total) * 100 : 0}%`,
+                          height: '100%',
+                          background: 'var(--dsw-alias-brand-primary, #2f6fed)',
+                        },
+                      }),
+                    ),
+                    h('span', { style: { width: '52px', textAlign: 'right', fontSize: '10px', opacity: 0.75 } }, `¥${value.toFixed(1)}`),
+                  ),
+                ),
+              )
+            : h('div', { style: { fontSize: '10px', opacity: 0.55 } }, '本月还没记账'),
+          h(
+            'div',
+            { style: { display: 'flex', gap: '6px' } },
+            h('input', {
+              value: amount,
+              inputMode: 'decimal',
+              onChange: (e) => setAmount(e.target.value),
+              placeholder: '金额',
+              style: { ...inputStyle, width: '62px', flex: '0 0 62px' },
+            }),
+            h('input', {
+              value: desc,
+              onChange: (e) => setDesc(e.target.value),
+              placeholder: '午饭、地铁…',
+              style: { ...inputStyle, flex: 1, minWidth: 0 },
+            }),
+            h('button', { type: 'button', onClick: add, style: { ...btnStyle, padding: '4px 9px', fontSize: '11px' } }, '记'),
+          ),
+          msg ? h('div', { style: { fontSize: '10px', opacity: 0.6 } }, msg) : null,
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () => {
+                try {
+                  window.__zuaOpenBills && window.__zuaOpenBills();
+                } catch {}
+              },
+              style: { ...btnStyle, fontSize: '11px' },
+            },
+            '打开完整账单',
+          ),
         ),
       );
     }
@@ -1028,6 +1217,10 @@ window.__ModuleLoader__.load({
         ctx.effect(
           () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: '@local/zua-panel-bills' }, BillsPanel),
           'zua-panel: bills tab body',
+        );
+
+        ctx.slots.inject('shell.overlay', () =>
+          ctx.slots.register({ name: 'shell.overlay', id: 'zua-wallet', order: 50 }, WalletWidget),
         );
 
         ctx.effect(() => {
