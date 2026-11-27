@@ -653,6 +653,21 @@ window.__ModuleLoader__.load({
     }
 
     const WALLET_HIDDEN = 'zua-wallet-hidden';
+    const WALLET_POS = 'zua-wallet-pos';
+
+    function loadWalletPos() {
+      try {
+        const value = JSON.parse(localStorage.getItem(WALLET_POS) || 'null');
+        if (value && Number.isFinite(value.x) && Number.isFinite(value.y)) return value;
+      } catch {}
+      return null;
+    }
+
+    function saveWalletPos(pos) {
+      try {
+        localStorage.setItem(WALLET_POS, JSON.stringify(pos));
+      } catch {}
+    }
 
     function WalletMascot({ size = 32 }) {
       return h(
@@ -730,6 +745,57 @@ window.__ModuleLoader__.load({
       const [desc, setDesc] = React.useState('');
       const [month, setMonth] = React.useState(currentMonth);
       const [msg, setMsg] = React.useState('');
+      const [pos, setPos] = React.useState(
+        () => loadWalletPos() || { x: Math.max(8, window.innerWidth - 280), y: Math.max(8, window.innerHeight - 320) },
+      );
+      const boxRef = React.useRef(null);
+      const posRef = React.useRef(pos);
+      posRef.current = pos;
+      const dragRef = React.useRef(null);
+      const movedRef = React.useRef(false);
+
+      const clampPos = (x, y) => {
+        const box = boxRef.current;
+        const width = box ? box.offsetWidth : 180;
+        const height = box ? box.offsetHeight : 48;
+        return {
+          x: Math.min(Math.max(6, x), Math.max(6, window.innerWidth - width - 6)),
+          y: Math.min(Math.max(6, y), Math.max(6, window.innerHeight - height - 6)),
+        };
+      };
+
+      React.useEffect(() => {
+        const onResize = () => setPos((current) => clampPos(current.x, current.y));
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+      }, []);
+
+      const onPointerMove = (event) => {
+        if (!dragRef.current) return;
+        const box = boxRef.current;
+        if (!box) return;
+        const x = event.clientX - dragRef.current.dx;
+        const y = event.clientY - dragRef.current.dy;
+        if (Math.abs(x - posRef.current.x) > 2 || Math.abs(y - posRef.current.y) > 2) movedRef.current = true;
+        setPos(clampPos(x, y));
+      };
+
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        dragRef.current = null;
+        saveWalletPos(posRef.current);
+      };
+
+      const startDrag = (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        const box = boxRef.current;
+        if (!box) return;
+        const rect = box.getBoundingClientRect();
+        dragRef.current = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+        movedRef.current = false;
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp, { once: true });
+      };
 
       React.useEffect(() => {
         const sync = () => {
@@ -788,18 +854,23 @@ window.__ModuleLoader__.load({
       if (!expanded) {
         return h(
           'div',
-          { style: { position: 'fixed', right: '18px', bottom: '104px', zIndex: 60 } },
+          { ref: boxRef, style: { position: 'fixed', left: pos.x, top: pos.y, zIndex: 60, touchAction: 'none' } },
           h(
-            'button',
+            'div',
             {
-              type: 'button',
-              onClick: () => setExpanded(true),
+              role: 'button',
+              tabIndex: 0,
+              onPointerDown: startDrag,
+              onClick: () => {
+                if (!movedRef.current) setExpanded(true);
+              },
               style: {
                 ...shellStyle,
                 padding: '8px 12px',
                 fontSize: '12px',
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: 'grab',
+                userSelect: 'none',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
@@ -815,18 +886,31 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { style: { position: 'fixed', right: '18px', bottom: '104px', zIndex: 60, width: '248px' } },
+        {
+          ref: boxRef,
+          style: { position: 'fixed', left: pos.x, top: pos.y, zIndex: 60, width: '248px', touchAction: 'none' },
+        },
         h(
           'div',
           { style: { ...shellStyle, padding: '12px', display: 'flex', flexDirection: 'column', gap: '9px' } },
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+            {
+              onPointerDown: startDrag,
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'move',
+                userSelect: 'none',
+              },
+            },
             h(
               'div',
               { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
               h(WalletMascot, { size: 30 }),
               h('div', { style: { fontSize: '13px', fontWeight: 700 } }, '钱包'),
+              h('span', { style: { fontSize: '10px', opacity: 0.4 } }, '⠿'),
             ),
             h(
               'div',
