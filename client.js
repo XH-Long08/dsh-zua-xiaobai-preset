@@ -564,7 +564,12 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { style: { height: '100%', overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px', color: 'var(--dsw-alias-label-primary, inherit)' } },
-        h('div', { style: { fontSize: '15px', fontWeight: 700 } }, '郑航账单'),
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: 700 } },
+          h(WalletMascot, { size: 28 }),
+          '郑航账单',
+        ),
         h(
           'div',
           { style: { ...card, display: 'flex', flexDirection: 'column', gap: '8px' } },
@@ -649,6 +654,74 @@ window.__ModuleLoader__.load({
 
     const WALLET_HIDDEN = 'zua-wallet-hidden';
 
+    function WalletMascot({ size = 32 }) {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 64 64',
+          width: size,
+          height: size,
+          'aria-hidden': true,
+          style: { display: 'block', flex: '0 0 auto' },
+        },
+        h('ellipse', { cx: 32, cy: 57, rx: 20, ry: 3.2, fill: 'rgba(0,0,0,0.10)' }),
+        h('circle', { cx: 47, cy: 15, r: 9, fill: '#FFD34D', stroke: '#E0A22F', strokeWidth: 1.2 }),
+        h(
+          'text',
+          {
+            x: 47,
+            y: 19,
+            textAnchor: 'middle',
+            fontSize: '9',
+            fontWeight: 700,
+            fill: '#8A5A00',
+            fontFamily: 'inherit',
+          },
+          '¥',
+        ),
+        h('rect', { x: 6, y: 20, width: 52, height: 33, rx: 12, fill: '#FFB27C' }),
+        h('rect', { x: 6, y: 20, width: 52, height: 12, rx: 8, fill: '#FF9A62' }),
+        h('rect', { x: 6, y: 26, width: 52, height: 6, fill: '#FF9A62' }),
+        h('rect', { x: 41, y: 33, width: 17, height: 15, rx: 7, fill: '#FFD0A6' }),
+        h('circle', { cx: 49.5, cy: 40.5, r: 4.6, fill: '#FFF6E9' }),
+        h(
+          'text',
+          {
+            x: 49.5,
+            y: 43.4,
+            textAnchor: 'middle',
+            fontSize: '6.2',
+            fontWeight: 700,
+            fill: '#C96B2E',
+            fontFamily: 'inherit',
+          },
+          '¥',
+        ),
+        h('circle', { cx: 21, cy: 39, r: 2.7, fill: '#3B2A22' }),
+        h('circle', { cx: 20.2, cy: 38.1, r: 0.9, fill: '#FFFFFF' }),
+        h('circle', { cx: 31, cy: 39, r: 2.7, fill: '#3B2A22' }),
+        h('circle', { cx: 30.2, cy: 38.1, r: 0.9, fill: '#FFFFFF' }),
+        h('circle', { cx: 15.5, cy: 43.5, r: 3, fill: '#FF8F8F', opacity: 0.55 }),
+        h('circle', { cx: 36.5, cy: 43.5, r: 3, fill: '#FF8F8F', opacity: 0.55 }),
+        h('path', {
+          d: 'M22.5 44.5 Q26 48 29.5 44.5',
+          fill: 'none',
+          stroke: '#3B2A22',
+          strokeWidth: 1.8,
+          strokeLinecap: 'round',
+        }),
+        h('path', {
+          d: 'M9 34 Q11 37 9 39',
+          fill: 'none',
+          stroke: '#F08C55',
+          strokeWidth: 1.6,
+          strokeLinecap: 'round',
+          opacity: 0.8,
+        }),
+        h('path', { d: 'M53.5 12.5 l1.2 -2.4 l1.2 2.4 l2.4 1.2 l-2.4 1.2 l-1.2 2.4 l-1.2 -2.4 l-2.4 -1.2 z', fill: '#FFE08A' }),
+      );
+    }
+
     function WalletWidget() {
       const [hidden, setHidden] = React.useState(() => localStorage.getItem(WALLET_HIDDEN) === '1');
       const [expanded, setExpanded] = React.useState(false);
@@ -732,7 +805,8 @@ window.__ModuleLoader__.load({
                 gap: '6px',
               },
             },
-            h('span', { style: { fontSize: '14px' } }, '钱包'),
+            h(WalletMascot, { size: 24 }),
+            h('span', { style: { fontSize: '12px' } }, '钱包'),
             h('span', { style: { color: 'var(--dsw-alias-brand-primary, #2f6fed)' } }, `本月 ¥${total.toFixed(2)}`),
             h('span', { style: { fontSize: '10px', opacity: 0.5 } }, '▸'),
           ),
@@ -748,7 +822,12 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-            h('div', { style: { fontSize: '13px', fontWeight: 700 } }, '钱包'),
+            h(
+              'div',
+              { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+              h(WalletMascot, { size: 30 }),
+              h('div', { style: { fontSize: '13px', fontWeight: 700 } }, '钱包'),
+            ),
             h(
               'div',
               { style: { display: 'flex', gap: '6px' } },
