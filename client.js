@@ -474,7 +474,14 @@ window.__ModuleLoader__.load({
       const update = (list) => {
         setBills(list);
         saveBills(list);
+        window.dispatchEvent(new Event('zua-wallet-sync'));
       };
+
+      React.useEffect(() => {
+        const sync = () => setBills(loadBills());
+        window.addEventListener('zua-wallet-sync', sync);
+        return () => window.removeEventListener('zua-wallet-sync', sync);
+      }, []);
       const add = () => {
         const value = parseAmount(amount);
         const day = normalizeDate(date);
