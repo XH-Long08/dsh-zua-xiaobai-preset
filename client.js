@@ -157,23 +157,6 @@ window.__ModuleLoader__.load({
       return false;
     }
 
-    async function downscale(dataUrl, maxWidth) {
-      const img = await new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('图片解码失败'));
-        image.src = dataUrl;
-      });
-      if (img.width <= maxWidth) return dataUrl;
-      const scale = maxWidth / img.width;
-      const canvas = document.createElement('canvas');
-      canvas.width = maxWidth;
-      canvas.height = Math.round(img.height * scale);
-      const context = canvas.getContext('2d');
-      context.drawImage(img, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL('image/jpeg', 0.85);
-    }
-
     const card = {
       background: 'var(--dsw-alias-bg-layer-1, rgba(127,127,127,0.06))',
       border: '.5px solid var(--dsw-alias-border-l3, rgba(127,127,127,0.22))',
@@ -469,9 +452,6 @@ window.__ModuleLoader__.load({
       const [desc, setDesc] = React.useState('');
       const [category, setCategory] = React.useState('auto');
       const [msg, setMsg] = React.useState('');
-      const [shot, setShot] = React.useState('');
-      const [busy, setBusy] = React.useState(false);
-      const fileRef = React.useRef(null);
 
       const update = (list) => {
         setBills(list);
@@ -506,51 +486,6 @@ window.__ModuleLoader__.load({
 
       const remove = (id) => {
         update(bills.filter((b) => b.id !== id));
-      };
-
-      const parseBillImage = async (file) => {
-        setBusy(true);
-        setMsg('正在识别账单截图…');
-        try {
-          const dataUrl = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = () => reject(new Error('read failed'));
-            reader.readAsDataURL(file);
-          });
-          const small = await downscale(dataUrl, 1600);
-          setShot(small);
-          const response = await fetch('http://127.0.0.1:27127/zua-panel/bills/parse', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ dataUrl: small }),
-            signal: AbortSignal.timeout(180000),
-          });
-          const raw = await response.text();
-          let payload = {};
-          try {
-            payload = JSON.parse(raw);
-          } catch {}
-          if (!response.ok) throw new Error(payload.error || raw.slice(0, 120) || `HTTP ${response.status}`);
-          const list = Array.isArray(payload.transactions) ? payload.transactions : [];
-          if (!list.length) throw new Error(payload.error || '没识别到支出记录');
-          const added = list
-            .map((item, i) => ({
-              id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-              date: normalizeDate(item.date) || todayISO(),
-              amount: Math.abs(Number(item.amount) || 0),
-              desc: item.desc || '未备注',
-              category: BILL_CATEGORIES.includes(item.category) ? item.category : guessCategory(item.desc),
-            }))
-            .filter((item) => item.amount > 0);
-          if (!added.length) throw new Error('识别结果没有有效金额');
-          update([...added, ...bills]);
-          setMsg(`已导入 ${added.length} 笔`);
-        } catch (error) {
-          setMsg(`识别失败：${error && error.message ? error.message : error}`);
-        } finally {
-          setBusy(false);
-        }
       };
 
       const exportCsv = () => {
@@ -637,48 +572,6 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', style: btnStyle, onClick: () => { update([]); setMsg('已清空'); } }, '清空全部'),
           ),
           msg ? h('div', { style: { fontSize: '11px', opacity: 0.7 } }, msg) : null,
-        ),
-        h(
-          'div',
-          { style: { ...card, display: 'flex', flexDirection: 'column', gap: '8px' } },
-          h('div', { style: sectionTitle }, '截图导入账单'),
-          h('input', {
-            ref: fileRef,
-            type: 'file',
-            accept: 'image/*',
-            style: { display: 'none' },
-            onChange: (event) => {
-              const file = event.target.files && event.target.files[0];
-              if (file) parseBillImage(file);
-              event.target.value = '';
-            },
-          }),
-          h(
-            'div',
-            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
-            h(
-              'button',
-              {
-                type: 'button',
-                style: btnStyle,
-                disabled: busy,
-                onClick: () => fileRef.current && fileRef.current.click(),
-              },
-              busy ? '识别中…' : '选择账单截图',
-            ),
-            shot
-              ? h('img', {
-                  src: shot,
-                  alt: '账单截图',
-                  style: { maxHeight: '120px', borderRadius: '8px', border: '.5px solid rgba(127,127,127,0.25)' },
-                })
-              : null,
-          ),
-          h(
-            'div',
-            { style: { fontSize: '11px', opacity: 0.6 } },
-            '支持支付宝/微信/银行/校园卡支付记录截图，只识别支出；识别后按商户自动分类。',
-          ),
         ),
         h(
           'div',
@@ -1060,7 +953,7 @@ window.__ModuleLoader__.load({
 
       const commit = (rows, note) => {
         if (!rows.length) {
-          setMsg(note || '没解析出课程，换一张更清晰的截图试试');
+          setMsg(note || '没解析出课程，检查课表文本格式');
           return;
         }
         setTimetable(rows);
